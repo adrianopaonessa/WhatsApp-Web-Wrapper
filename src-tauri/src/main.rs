@@ -7,11 +7,9 @@ fn main() {
         glib::set_application_name("WhatsApp");
         glib::set_prgname(Some("WhatsApp"));
 
-        if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
-            unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
-        }
-        if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
-            unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1") };
+        unsafe {
+            // Essential for Tauri WebKitGTK on Wayland to prevent white screen freezing
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
     }
 
