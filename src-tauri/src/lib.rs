@@ -2,7 +2,7 @@ mod state;
 mod tray;
 mod window;
 
-use tauri::Manager;
+use tauri::WebviewWindowBuilder;
 use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -17,26 +17,30 @@ pub fn run() {
             tray::setup(app)?;
 
             let app_state = state::load(app.handle());
-            if let Some(win) = app.get_webview_window(window::MAIN_WINDOW_LABEL) {
-                // Grant camera, mic, location and notification permissions
-                window::setup_webview_permissions(&win);
 
-                if app_state.maximized {
-                    let _ = win.maximize();
-                } else {
-                    let _ = win.set_size(tauri::Size::Physical(tauri::PhysicalSize {
-                        width: app_state.width,
-                        height: app_state.height,
-                    }));
-                }
+            // Build the main window programmatically with initialization_script
+            let win = WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?
+                .initialization_script(window::NOTIFICATION_SCRIPT)
+                .build()?;
 
-                let is_autostart = std::env::args().any(|arg| arg == "--autostart");
-                let should_hide = (is_autostart && app_state.start_in_background_on_boot)
-                    || (!is_autostart && app_state.start_in_background_on_manual_launch);
+            // Grant hardware and notification permissions
+            window::setup_webview_permissions(&win);
 
-                if should_hide {
-                    window::hide_to_tray(&win);
-                }
+            if app_state.maximized {
+                let _ = win.maximize();
+            } else {
+                let _ = win.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                    width: app_state.width,
+                    height: app_state.height,
+                }));
+            }
+
+            let is_autostart = std::env::args().any(|arg| arg == "--autostart");
+            let should_hide = (is_autostart && app_state.start_in_background_on_boot)
+                || (!is_autostart && app_state.start_in_background_on_manual_launch);
+
+            if should_hide {
+                window::hide_to_tray(&win);
             }
 
             Ok(())

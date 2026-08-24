@@ -1,6 +1,6 @@
 [package]
 name = "whatsapp-web-wrapper"
-version = "0.1.0"
+version = "0.1.1"
 description = "Native desktop wrapper for WhatsApp Web built with Tauri v2 and Rust"
 authors = ["Adriano Paonessa"]
 edition = "2021"

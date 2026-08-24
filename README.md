@@ -39,9 +39,18 @@ Designed for minimal resource usage, clean background system tray integration, a
 
 Grab the latest package for your distribution from the [Releases](https://github.com/adrianopaonessa/WhatsApp-Web-Wrapper/releases/latest) page:
 
-* **Universal (.AppImage)**: Works on any Linux distro. Just make it executable (`chmod +x *.AppImage`) and launch.
-* **Debian / Ubuntu / Mint (.deb)**: `sudo dpkg -i WhatsApp-Web-Wrapper-*.deb`
-* **Fedora / RHEL / openSUSE (.rpm)**: `sudo rpm -i WhatsApp-Web-Wrapper-*.rpm`
+| Format | Architecture | Filename | Target Distributions |
+| :--- | :--- | :--- | :--- |
+| **AppImage** | `x86_64` | `WhatsApp_0.1.1_amd64.AppImage` | Universal Linux (Portable, self-contained) |
+| **DEB** | `amd64` | `WhatsApp_0.1.1_amd64.deb` | Ubuntu, Debian, Pop!_OS, Linux Mint |
+| **RPM** | `x86_64` | `WhatsApp-0.1.1-1.x86_64.rpm` | Fedora, openSUSE, RHEL, CachyOS/Arch |
+
+#### Running the AppImage
+```bash
+chmod +x WhatsApp_0.1.1_amd64.AppImage
+./WhatsApp_0.1.1_amd64.AppImage
+```
+
 * **Arch Linux / CachyOS (Manual PKGBUILD)**:
   ```bash
   git clone https://github.com/adrianopaonessa/WhatsApp-Web-Wrapper.git

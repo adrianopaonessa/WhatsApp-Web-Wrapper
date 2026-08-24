@@ -52,12 +52,117 @@ pub fn restore_from_tray(window: &WebviewWindow) {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct NotificationPayload {
     id: u64,
     title: String,
     body: String,
 }
+
+pub const NOTIFICATION_SCRIPT: &str = r#"
+(function() {
+    let notifCount = 0;
+    window.__activeNotifications = window.__activeNotifications || {};
+
+    class CustomNotification extends EventTarget {
+        constructor(title, options = {}) {
+            super();
+            this.id = ++notifCount;
+            this.title = String(title || 'WhatsApp');
+            this.body = String(options.body || '');
+            this.icon = String(options.icon || '');
+            this.tag = String(options.tag || '');
+            this.data = options.data || null;
+            this.silent = !!options.silent;
+            this.timestamp = options.timestamp || Date.now();
+            this.onclick = null;
+            this.onclose = null;
+            this.onerror = null;
+            this.onshow = null;
+
+            window.__activeNotifications[this.id] = this;
+
+            try {
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.notify) {
+                    window.webkit.messageHandlers.notify.postMessage(JSON.stringify({
+                        id: this.id,
+                        title: this.title,
+                        body: this.body
+                    }));
+                }
+            } catch (e) {
+                console.error('Failed to post notification to host:', e);
+            }
+
+            setTimeout(() => {
+                if (typeof this.onshow === 'function') this.onshow(new Event('show'));
+                this.dispatchEvent(new Event('show'));
+            }, 10);
+        }
+
+        close() {
+            delete window.__activeNotifications[this.id];
+            if (typeof this.onclose === 'function') this.onclose(new Event('close'));
+            this.dispatchEvent(new Event('close'));
+        }
+
+        static get permission() {
+            return 'granted';
+        }
+
+        static requestPermission(callback) {
+            if (typeof callback === 'function') callback('granted');
+            return Promise.resolve('granted');
+        }
+
+        static get maxActions() {
+            return 2;
+        }
+    }
+
+    window.Notification = CustomNotification;
+
+    if (typeof ServiceWorkerRegistration !== 'undefined') {
+        ServiceWorkerRegistration.prototype.showNotification = function(title, options) {
+            try {
+                new CustomNotification(title, options);
+            } catch (e) {
+                console.error('SW showNotification error:', e);
+            }
+            return Promise.resolve();
+        };
+        ServiceWorkerRegistration.prototype.getNotifications = function() {
+            return Promise.resolve(Object.values(window.__activeNotifications || {}));
+        };
+    }
+
+    if (navigator.permissions && navigator.permissions.query) {
+        const originalQuery = navigator.permissions.query.bind(navigator.permissions);
+        navigator.permissions.query = function(queryObj) {
+            if (queryObj && queryObj.name === 'notifications') {
+                return Promise.resolve({
+                    name: 'notifications',
+                    state: 'granted',
+                    status: 'granted',
+                    onchange: null,
+                    addEventListener: function() {},
+                    removeEventListener: function() {},
+                    dispatchEvent: function() { return false; }
+                });
+            }
+            return originalQuery(queryObj);
+        };
+    }
+
+    window.__triggerNotificationClick = function(id) {
+        const notif = window.__activeNotifications[id] || Object.values(window.__activeNotifications).pop();
+        if (notif) {
+            if (typeof notif.onclick === 'function') notif.onclick(new Event('click'));
+            notif.dispatchEvent(new Event('click'));
+        }
+    };
+})();
+"#;
 
 pub fn setup_webview_permissions(window: &WebviewWindow) {
     #[cfg(target_os = "linux")]
@@ -72,75 +177,9 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
             let wv = webview.inner();
 
             if let Some(ucm) = wv.user_content_manager() {
-                let script_content = r#"
-                    (function() {
-                        let notifCount = 0;
-                        window.__activeNotifications = {};
-
-                        // Standard ES6 EventTarget-compliant Notification class
-                        class CustomNotification extends EventTarget {
-                            constructor(title, options = {}) {
-                                super();
-                                this.id = ++notifCount;
-                                this.title = title || 'WhatsApp';
-                                this.body = options.body || '';
-                                this.icon = options.icon || '';
-                                this.tag = options.tag || '';
-                                this.onclick = null;
-                                this.onclose = null;
-                                this.onerror = null;
-                                this.onshow = null;
-
-                                window.__activeNotifications[this.id] = this;
-
-                                try {
-                                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.notify) {
-                                        window.webkit.messageHandlers.notify.postMessage({
-                                            id: this.id,
-                                            title: this.title,
-                                            body: this.body
-                                        });
-                                    }
-                                } catch (e) {
-                                    console.error('Failed to post notification:', e);
-                                }
-                            }
-
-                            close() {
-                                delete window.__activeNotifications[this.id];
-                                if (typeof this.onclose === 'function') this.onclose(new Event('close'));
-                                this.dispatchEvent(new Event('close'));
-                            }
-
-                            static get permission() {
-                                return 'granted';
-                            }
-
-                            static requestPermission(callback) {
-                                if (typeof callback === 'function') callback('granted');
-                                return Promise.resolve('granted');
-                            }
-
-                            static get maxActions() {
-                                return 2;
-                            }
-                        }
-
-                        window.Notification = CustomNotification;
-
-                        window.__triggerNotificationClick = function(id) {
-                            const notif = window.__activeNotifications[id] || Object.values(window.__activeNotifications).pop();
-                            if (notif) {
-                                if (typeof notif.onclick === 'function') notif.onclick(new Event('click'));
-                                notif.dispatchEvent(new Event('click'));
-                            }
-                        };
-                    })();
-                "#;
-
                 let script = UserScript::new(
-                    script_content,
-                    UserContentInjectedFrames::TopFrame,
+                    NOTIFICATION_SCRIPT,
+                    UserContentInjectedFrames::AllFrames,
                     UserScriptInjectionTime::Start,
                     &[],
                     &[],
@@ -167,25 +206,25 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
                                 let win = win_target.clone();
                                 let notif_id = payload.id;
                                 std::thread::spawn(move || {
-                                    let _ = notify_rust::Notification::new()
-                                        .appname("WhatsApp")
+                                    let mut notif = notify_rust::Notification::new();
+                                    notif.appname("WhatsApp")
                                         .summary(&payload.title)
                                         .body(&payload.body)
                                         .icon("whatsapp-web-wrapper")
-                                        .action("default", "Open")
-                                        .show()
-                                        .map(|handle| {
-                                            handle.wait_for_action(|action| {
-                                                if action == "default" {
-                                                    restore_from_tray(&win);
-                                                    let js = format!(
-                                                        "if (window.__triggerNotificationClick) window.__triggerNotificationClick({});",
-                                                        notif_id
-                                                    );
-                                                    let _ = win.eval(&js);
-                                                }
-                                            });
+                                        .action("default", "Open");
+
+                                    if let Ok(handle) = notif.show() {
+                                        handle.wait_for_action(|action| {
+                                            if action == "default" {
+                                                restore_from_tray(&win);
+                                                let js = format!(
+                                                    "if (window.__triggerNotificationClick) window.__triggerNotificationClick({});",
+                                                    notif_id
+                                                );
+                                                let _ = win.eval(&js);
+                                            }
                                         });
+                                    }
                                 });
                             }
                         }
