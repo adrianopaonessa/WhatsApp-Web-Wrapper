@@ -62,12 +62,19 @@ pub fn restore_from_tray(window: &WebviewWindow) {
     }
 }
 
-/// Configure hardware and feature permissions (microphone, camera, location, notifications)
+#[derive(serde::Deserialize)]
+struct NotificationPayload {
+    id: u64,
+    title: String,
+    body: String,
+}
+
+/// Configure hardware, background execution, and notification permissions
 pub fn setup_webview_permissions(window: &WebviewWindow) {
     #[cfg(target_os = "linux")]
     {
         use webkit2gtk::{
-            NotificationExt, PermissionRequestExt, SettingsExt, UserContentInjectedFrames,
+            JavascriptResult, PermissionRequestExt, SettingsExt, UserContentInjectedFrames,
             UserContentManagerExt, UserScript, UserScriptInjectionTime, WebViewExt,
         };
 
@@ -81,16 +88,30 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
                 settings.set_media_playback_requires_user_gesture(false);
             }
 
-            // Inject notification bridge so WhatsApp auto-grants permissions and hooks click events
+            // Inject background keep-alive and notification bridge
             if let Some(ucm) = wv.user_content_manager() {
-                let notification_bridge = r#"
+                let script_content = r#"
                     (function() {
-                        if (typeof Notification === 'undefined') return;
+                        // Prevent WhatsApp Web from going to sleep while keeping WebKit repainting intact
+                        try {
+                            Object.defineProperty(document, 'hidden', {
+                                get: () => false,
+                                configurable: true
+                            });
+                            Object.defineProperty(document, 'visibilityState', {
+                                get: () => 'visible',
+                                configurable: true
+                            });
+                            Object.defineProperty(document, 'webkitVisibilityState', {
+                                get: () => 'visible',
+                                configurable: true
+                            });
+                        } catch (e) {}
 
+                        // Notification bridge for system notifications and instant chat opening
                         window.__activeNotifications = {};
                         let notifCount = 0;
 
-                        const OrigNotification = window.Notification;
                         function CustomNotification(title, options) {
                             options = options || {};
                             const id = ++notifCount;
@@ -127,11 +148,18 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
                                 delete window.__activeNotifications[id];
                             };
 
+                            // Send directly to Rust host
                             try {
-                                if (OrigNotification) {
-                                    new OrigNotification(title, options);
+                                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.notify) {
+                                    window.webkit.messageHandlers.notify.postMessage(JSON.stringify({
+                                        id: id,
+                                        title: title || 'WhatsApp',
+                                        body: options.body || ''
+                                    }));
                                 }
-                            } catch (e) {}
+                            } catch (e) {
+                                console.error('Failed to post notification message to host:', e);
+                            }
                         }
 
                         CustomNotification.permission = 'granted';
@@ -140,72 +168,77 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
                             return Promise.resolve('granted');
                         };
 
+                        window.Notification = CustomNotification;
                         try {
                             Object.defineProperty(window, 'Notification', {
                                 value: CustomNotification,
                                 writable: true,
                                 configurable: true
                             });
-                        } catch (e) {
-                            window.Notification = CustomNotification;
-                        }
+                        } catch (e) {}
+
+                        window.__triggerNotificationClick = function(id) {
+                            const notif = window.__activeNotifications[id] || Object.values(window.__activeNotifications).pop();
+                            if (notif) {
+                                if (typeof notif.onclick === 'function') notif.onclick(new Event('click'));
+                                notif.dispatchEvent(new Event('click'));
+                            }
+                        };
                     })();
                 "#;
 
                 let script = UserScript::new(
-                    notification_bridge,
+                    script_content,
                     UserContentInjectedFrames::AllFrames,
                     UserScriptInjectionTime::Start,
                     &[],
                     &[],
                 );
                 ucm.add_script(&script);
+
+                // Register native message handler from JS to Rust
+                ucm.register_script_message_handler("notify");
+                let win_target = w.clone();
+                ucm.connect_script_message_received(
+                    Some("notify"),
+                    move |_ucm, js_result: &JavascriptResult| {
+                        if let Some(js_val) = js_result.js_value() {
+                            let json_str = js_val.to_string();
+                            if let Ok(payload) =
+                                serde_json::from_str::<NotificationPayload>(&json_str)
+                            {
+                                let win = win_target.clone();
+                                let notif_id = payload.id;
+                                std::thread::spawn(move || {
+                                    let _ = notify_rust::Notification::new()
+                                        .appname("WhatsApp")
+                                        .summary(&payload.title)
+                                        .body(&payload.body)
+                                        .icon("whatsapp-web-wrapper")
+                                        .action("default", "Open")
+                                        .show()
+                                        .map(|handle| {
+                                            handle.wait_for_action(|action| {
+                                                if action == "default" {
+                                                    restore_from_tray(&win);
+                                                    let js = format!(
+                                                        "if (window.__triggerNotificationClick) window.__triggerNotificationClick({});",
+                                                        notif_id
+                                                    );
+                                                    let _ = win.eval(&js);
+                                                }
+                                            });
+                                        });
+                                });
+                            }
+                        }
+                    },
+                );
             }
 
-            // Automatically allow camera, mic, geolocation and notification requests
+            // Automatically allow camera, mic, and geolocation requests
             wv.connect_permission_request(|_, request| {
                 request.allow();
-                true
-            });
-
-            // Handle native system notification with explicit "WhatsApp" branding and click-to-open
-            let win_target = w.clone();
-            wv.connect_show_notification(move |_wv, notification| {
-                let title = notification.title().unwrap_or_default().to_string();
-                let body = notification.body().unwrap_or_default().to_string();
-                let notif_id = notification.id();
-                let win = win_target.clone();
-
-                std::thread::spawn(move || {
-                    let _ = notify_rust::Notification::new()
-                        .appname("WhatsApp")
-                        .summary(&title)
-                        .body(&body)
-                        .icon("whatsapp-web-wrapper")
-                        .action("default", "Open")
-                        .show()
-                        .map(|handle| {
-                            handle.wait_for_action(|action| {
-                                if action == "default" {
-                                    restore_from_tray(&win);
-                                    let js = format!(
-                                        r#"
-                                        (function() {{
-                                            const notif = window.__activeNotifications && (window.__activeNotifications[{}] || Object.values(window.__activeNotifications).pop());
-                                            if (notif) {{
-                                                if (typeof notif.onclick === 'function') notif.onclick(new Event('click'));
-                                                notif.dispatchEvent(new Event('click'));
-                                            }}
-                                        }})();
-                                        "#,
-                                        notif_id
-                                    );
-                                    let _ = win.eval(&js);
-                                }
-                            });
-                        });
-                });
-
                 true
             });
         });
