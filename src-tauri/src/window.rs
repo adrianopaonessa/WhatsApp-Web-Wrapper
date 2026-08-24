@@ -6,7 +6,6 @@ use crate::state;
 pub const MAIN_WINDOW_LABEL: &str = "main";
 
 static HIDDEN_IN_TRAY: AtomicBool = AtomicBool::new(false);
-static WAS_MAXIMIZED: AtomicBool = AtomicBool::new(false);
 
 pub fn toggle_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
@@ -31,33 +30,24 @@ pub fn save_window_state(window: &WebviewWindow) {
 
 pub fn hide_to_tray(window: &WebviewWindow) {
     save_window_state(window);
-    WAS_MAXIMIZED.store(window.is_maximized().unwrap_or(false), Ordering::SeqCst);
-    let _ = window.hide();
+    let _ = window.set_skip_taskbar(true);
+    let _ = window.minimize();
     HIDDEN_IN_TRAY.store(true, Ordering::SeqCst);
 }
 
 pub fn restore_from_tray(window: &WebviewWindow) {
+    let _ = window.set_skip_taskbar(false);
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
     HIDDEN_IN_TRAY.store(false, Ordering::SeqCst);
 
-    // KWin Wayland: force recalculation of decoration input regions
     #[cfg(target_os = "linux")]
     {
-        let w = window.clone();
-        let was_maximized = WAS_MAXIMIZED.load(Ordering::SeqCst);
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            if was_maximized {
-                let _ = w.unmaximize();
-                std::thread::sleep(std::time::Duration::from_millis(16));
-                let _ = w.maximize();
-            } else {
-                let _ = w.maximize();
-                std::thread::sleep(std::time::Duration::from_millis(16));
-                let _ = w.unmaximize();
-            }
+        use gtk::prelude::WidgetExt;
+        let _ = window.with_webview(|webview| {
+            let wv = webview.inner();
+            wv.queue_draw();
         });
     }
 }
@@ -69,7 +59,6 @@ struct NotificationPayload {
     body: String,
 }
 
-/// Configure hardware, background execution, and notification permissions
 pub fn setup_webview_permissions(window: &WebviewWindow) {
     #[cfg(target_os = "linux")]
     {
@@ -88,11 +77,9 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
                 settings.set_media_playback_requires_user_gesture(false);
             }
 
-            // Inject background keep-alive and notification bridge
             if let Some(ucm) = wv.user_content_manager() {
                 let script_content = r#"
                     (function() {
-                        // Prevent WhatsApp Web from going to sleep while keeping WebKit repainting intact
                         try {
                             Object.defineProperty(document, 'hidden', {
                                 get: () => false,
@@ -108,7 +95,6 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
                             });
                         } catch (e) {}
 
-                        // Notification bridge for system notifications and instant chat opening
                         window.__activeNotifications = {};
                         let notifCount = 0;
 
@@ -148,7 +134,6 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
                                 delete window.__activeNotifications[id];
                             };
 
-                            // Send directly to Rust host
                             try {
                                 if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.notify) {
                                     window.webkit.messageHandlers.notify.postMessage(JSON.stringify({
@@ -196,7 +181,6 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
                 );
                 ucm.add_script(&script);
 
-                // Register native message handler from JS to Rust
                 ucm.register_script_message_handler("notify");
                 let win_target = w.clone();
                 ucm.connect_script_message_received(
@@ -236,7 +220,6 @@ pub fn setup_webview_permissions(window: &WebviewWindow) {
                 );
             }
 
-            // Automatically allow camera, mic, and geolocation requests
             wv.connect_permission_request(|_, request| {
                 request.allow();
                 true

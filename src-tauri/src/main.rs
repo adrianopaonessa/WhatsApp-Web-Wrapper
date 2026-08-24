@@ -8,8 +8,10 @@ fn main() {
         glib::set_prgname(Some("WhatsApp"));
 
         if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
-            // SAFETY: Process entry point before any threads are spawned
             unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+        }
+        if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
+            unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1") };
         }
     }
 
