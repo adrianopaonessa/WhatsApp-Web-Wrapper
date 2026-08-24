@@ -25,7 +25,7 @@ Designed for minimal resource usage, clean background system tray integration, a
   - **Start in Background on Manual Launch**: Launch directly into the system tray on manual launches.
 - **Wayland / KDE Plasma 6 Optimized**: Handles KWin Wayland surface re-mapping and window decoration state seamlessly.
 - **State Persistence**: Automatically remembers and restores window dimensions and maximized state across sessions.
-- **Zero Frontend Bloat**: Connects directly to WhatsApp Web without unnecessary local JavaScript bundle overhead.
+- **Zero Frontend Bloat**: Connects directly to WhatsApp Web.
 
 > [!NOTE]
 > **Voice & Video Calls Notice:**
