@@ -42,6 +42,12 @@ Grab the latest package for your distribution from the [Releases](https://github
 * **Universal (.AppImage)**: Works on any Linux distro. Just make it executable (`chmod +x *.AppImage`) and launch.
 * **Debian / Ubuntu / Mint (.deb)**: `sudo dpkg -i WhatsApp-Web-Wrapper-*.deb`
 * **Fedora / RHEL / openSUSE (.rpm)**: `sudo rpm -i WhatsApp-Web-Wrapper-*.rpm`
+* **Arch Linux / CachyOS (Manual PKGBUILD)**:
+  ```bash
+  git clone [https://github.com/adrianopaonessa/WhatsApp-Web-Wrapper.git](https://github.com/adrianopaonessa/WhatsApp-Web-Wrapper.git)
+  cd WhatsApp-Web-Wrapper/pkg/aur
+  makepkg -si
+  ```
 
 ---
 
