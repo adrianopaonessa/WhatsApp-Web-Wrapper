@@ -1,0 +1,14 @@
+{
+  "name": "whatsapp-web-wrapper",
+  "version": "0.1.0",
+  "description": "Native desktop wrapper for WhatsApp Web built with Tauri v2 and Rust",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
