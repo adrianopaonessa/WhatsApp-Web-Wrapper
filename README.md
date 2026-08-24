@@ -1,5 +1,11 @@
 # WhatsApp Web Wrapper
 
+[![GitHub Release](https://img.shields.io/github/v/release/adrianopaonessa/WhatsApp-Web-Wrapper?color=25D366&logo=whatsapp&logoColor=white)](https://github.com/adrianopaonessa/WhatsApp-Web-Wrapper/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Built with Tauri](https://img.shields.io/badge/Built_with-Tauri_v2-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
+[![Rust](https://img.shields.io/badge/Language-Rust-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org)
+[![Platform](https://img.shields.io/badge/Platform-Linux_Wayland_%26_X11-FCC624?logo=linux&logoColor=black)](https://github.com/adrianopaonessa/WhatsApp-Web-Wrapper)
+
 A fast, native, and lightweight desktop wrapper for [WhatsApp Web](https://web.whatsapp.com), built with [Tauri v2](https://tauri.app) and Rust.
 
 Designed for minimal resource usage, clean background system tray integration, and seamless Linux Wayland support (including KDE Plasma 6 / KWin).
@@ -21,9 +27,25 @@ Designed for minimal resource usage, clean background system tray integration, a
 - **State Persistence**: Automatically remembers and restores window dimensions and maximized state across sessions.
 - **Zero Frontend Bloat**: Connects directly to WhatsApp Web without unnecessary local JavaScript bundle overhead.
 
+> [!NOTE]
+> **Voice & Video Calls Notice:**
+> Direct voice and video calling is currently not supported. This is an upstream limitation of WhatsApp Web itself, which reserves calling capabilities exclusively for native mobile apps and official desktop clients. Voice notes (recording and playing audio) work natively without issues.
+
 ---
 
-## Installation & Prerequisites
+## Installation
+
+### Pre-built Binaries (Recommended)
+
+Grab the latest package for your distribution from the [Releases](https://github.com/adrianopaonessa/WhatsApp-Web-Wrapper/releases/latest) page:
+
+* **Universal (.AppImage)**: Works on any Linux distro. Just make it executable (`chmod +x *.AppImage`) and launch.
+* **Debian / Ubuntu / Mint (.deb)**: `sudo dpkg -i WhatsApp-Web-Wrapper-*.deb`
+* **Fedora / RHEL / openSUSE (.rpm)**: `sudo rpm -i WhatsApp-Web-Wrapper-*.rpm`
+
+---
+
+### Building from Source
 
 ### Option A: Automated Setup (Recommended)
 
