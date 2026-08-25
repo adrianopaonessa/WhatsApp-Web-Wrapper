@@ -28,6 +28,10 @@ pub fn save_window_state(window: &WebviewWindow) {
     }
 }
 
+pub fn mark_hidden_in_tray() {
+    HIDDEN_IN_TRAY.store(true, Ordering::SeqCst);
+}
+
 pub fn hide_to_tray(window: &WebviewWindow) {
     save_window_state(window);
     let _ = window.set_skip_taskbar(true);
